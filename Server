@@ -1,0 +1,202 @@
+/* Created by: Benjamin Edwards
+ * Date: 10/10/2022
+ * Description: Server program. The server always listens for clients.
+ * A client once connected will be put into their own thread. In the thread, all the prime numbers between 0 and clientNumber will be found and store into an array 
+ * which will be sent to the client.
+ * The server will divide the task of finding all the prime numbers by creating x number of worker threads to handle its computation.the threads will work in parallel and return a array of the combined work.
+ * 
+ */
+
+import java.net.*;
+import java.util.concurrent.RecursiveAction;
+import java.util.concurrent.*;
+import java.io.*;
+ 
+public class Server2
+{
+    public static void main(String[] args) throws IOException
+    {   
+        try
+        {
+            ServerSocket server = new ServerSocket(5247);
+            System.out.println("Server started");
+            System.out.println("Waiting for a client ...");
+
+            //while loop to always listen to clients and create a thread for each one of them.
+            while(true)
+            {
+                Socket client = server.accept();
+                System.out.println("New client connected"+ client.getInetAddress().getHostAddress()); 
+
+                ClientHandler t = new ClientHandler(client);
+
+                new Thread(t).start();
+            }
+
+            
+            
+        }
+        catch(IOException e)
+        {
+            e.printStackTrace(); 
+        }
+        
+    }
+
+    //client thread
+    private static class ClientHandler implements Runnable
+    {
+        private final Socket clientSocket;
+
+        //this class divides the work up between worker threads and finds the array of prime numbers
+        class calcPrimes extends RecursiveAction{
+            final int seqThreshold = 1000000; // the threshold before the task is split up
+    
+            int[] data;
+            int end;
+            int start;
+            //takes in the array, start of the array and end of the array. Start can also be where the x'th task begins there job and end is when it ends its task
+            calcPrimes(int[] data, int start, int end){
+                this.data = data;
+                this.start = start;
+                this.end = end;
+            }
+            @Override
+            protected void compute() { 
+                if(end - start <= seqThreshold){ //if total length of array is less than threshold, find prime numbers
+    
+                int count = 0;
+               
+                for (int i = 2; i <= end; i++) { //if true (prime) add to an array
+                    if (isPrime(i)){
+                        data[count] = i;
+                        count++;
+                    } 
+                }
+ 
+                } else { //else, find mid and start another task to help fill array with primes
+                    int mid = (start + end) / 2;
+                    invokeAll(new calcPrimes(data, start, mid),
+                              new calcPrimes(data, mid, end));
+                }
+            }
+            //finds primes, true means N is prime, false N is not prime
+            private boolean isPrime(int N) {
+                if (N < 2) return false; //base case, 0 and 1 are not prime
+                for (int i = 2; i <= Math.sqrt(N); i++) {
+                    if (N % i == 0) return false; //if 0 then N has more than 2 factors and not a prime number
+                }
+                return true;
+            }
+        }
+  
+        // default Constructor
+        public ClientHandler(Socket socket)
+        {
+            this.clientSocket = socket;
+        }
+        
+        public void run()
+        {  
+            DataOutputStream outInts = null;
+            BufferedWriter outString = null;
+            BufferedReader in = null;
+            String line = null;
+            String message;
+            int errorCode = 0; //0 by defaut means client sent a valid number
+            int clientNumber;
+            
+            try 
+            {
+                
+                outInts =  new DataOutputStream(clientSocket.getOutputStream());// get the outputstream of client
+                outString = new BufferedWriter(new OutputStreamWriter(clientSocket.getOutputStream()));
+                in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));// get the inputstream of client
+                
+                //while loop in order to keep checking user is sending a valid number. If they dont the server will send Client a error number 
+                //to tell them to keep outputing numbers until they send a valid one.
+                // If they do then they break from the loop
+                while(true)
+                {
+                    line = in.readLine();
+                    if((line.matches("[0-9]+")) && (Integer.parseInt(line) <= 1000001) && (Integer.parseInt(line) >= 0))
+                    {
+                        System.out.println("Client sent a valid number");
+                        clientNumber = Integer.parseInt(line);
+                        
+                        errorCode = 0;
+                        outInts.writeInt(errorCode); // to then send error code (in this case there is no error so, errorCode = 0)
+                        outString.flush();
+
+                        line = in.readLine();
+                        System.out.println(line); //should be "client recieved error code"
+
+                        
+                        message = "Number Recieved and is valid";
+                        outString.write(message);
+                        outString.newLine();
+                        outString.flush();
+                        break;
+                    }
+                    else
+                    {
+                        System.out.println("Client sent a invalid number");
+                        errorCode = 1;
+                        outInts.writeInt(errorCode); // to send error code (errorCode = 1)
+                        outString.flush();
+
+                        line = in.readLine();
+                        System.out.println(line); //should be client recieved error code
+
+                        message = "You did not enter a valid number, please enter a large number in between 0 and 1,000,000 (without commas)";
+                        outString.write(message);
+                        outString.newLine();
+                        outString.flush();   
+                    }
+                }          
+
+                int nThreads = Runtime.getRuntime().availableProcessors();
+                System.out.println("Number of threads available for concurrency: " + nThreads);
+
+                ForkJoinPool forkJoinPool = new ForkJoinPool(nThreads); //creates a forkjoinpool object and passes it the number of available threads
+
+                int[] allUpToN = new int[clientNumber]; // creates thread to store prime numbers
+                calcPrimes task = new calcPrimes(allUpToN, 0, allUpToN.length);//creates task object passing array and its length
+                forkJoinPool.invoke(task); //invoke task
+
+                System.out.println("Sending array length...");
+                outInts.writeInt(allUpToN.length);//sends client array length
+                outInts.flush();
+                
+                System.out.println("Array length Sent");
+                System.out.println("Sending array");
+                for(int i = 0; i < allUpToN.length; i++){ //outputs array to client
+                    
+                    outInts.writeInt(allUpToN[i]);
+                    outInts.flush(); 
+                               
+                }
+                System.out.println("Sent array");    
+                forkJoinPool.shutdown();
+
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+            }
+            finally 
+            {
+                try 
+                {       
+                    outString.close();
+                    outInts.close();
+                    in.close();
+                    clientSocket.close();
+                }
+                catch (IOException e) 
+                {
+                    e.printStackTrace();
+                }
+            }
+        } 
+    }
+}
