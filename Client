@@ -1,0 +1,111 @@
+/* Created by: Benjamin Edwards
+ * Date: 10/10/2022
+ * Description: Client program. The client chooses and then sends the server a number.
+   The server will calculate all the prime numbers in between 0 and the chosen number and send these numbers back to the client to get outputed.
+ */
+
+ import java.net.*;
+ import java.io.*;
+ import java.util.Scanner;
+
+ public class Client2
+ {
+
+    public static void main(String args[])
+    {
+        String message;
+        String line = null;
+        int wrongNumCode = 0; //is sent to client if clients send a invalid number, wrongNumCode keeps the client in a loop to keep checking their input. By defualt its 0 (off_)
+        int lineCount = 1;
+       
+
+        try 
+        {
+            
+            Socket socket = new Socket("localhost", 5247); //fyi for VMs "ip address" needs to be server VM ip
+            System.out.print("You've connected to server. \nPlease enter a large number in between 0 and 1,000,000 (without commas)\n");
+
+            DataInputStream inInts = new DataInputStream(socket.getInputStream()); //this input stream is for accepting the prime numbers being sent from server
+            BufferedReader inString = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+            Scanner sc = new Scanner(System.in);
+
+            line = sc.nextLine();
+            out.write(line);
+            out.newLine();
+            out.flush();
+            
+            //this loop's purpose is if the client does not enter a valid number, the server checks it and sends an errorcode with would be 1 or 0. 
+            //If 1, then the client in stuck in the loop, having to keep entering numbers and sending them to the server. Otherwise break; exiting the loop
+            while(true){
+                wrongNumCode = inInts.readInt();
+                out.write("Client recieved error code");//dummy message to get message from server
+                out.newLine();
+                out.flush();
+                message = inString.readLine();
+
+               
+                if(wrongNumCode == 1){
+                    System.out.println(message);
+                    line = sc.nextLine();
+                    out.write(line);
+                    out.newLine();
+                    out.flush();
+                
+
+                }else{
+                    break;
+                }
+            }
+
+            System.out.println(message);
+            System.out.println("Outputing the primes:");
+
+            //creates an array to store in the prime numbers the server is outputing to client
+            int arrLength = inInts.readInt(); 
+            int[] primeArray = new int[arrLength];
+            //fills the array with the output of the server
+            for(int i = 0; i < primeArray.length; i++){
+                primeArray[i] = inInts.readInt();
+            }
+            //prints the array formatting it so there are 10 numbers per line
+            for(int i = 0; i < primeArray.length; i++){
+               if(primeArray[i] != 0){
+                if(lineCount <= 10){
+                    
+                    System.out.print(primeArray[i] + " "); 
+                    lineCount++;
+                    if((lineCount) == 10){
+
+                        System.out.println();
+                        lineCount = 1;
+                    
+                    } 
+                }       
+               }
+                
+            }
+            System.out.println("\nThese are all prime numbers.");
+
+            out.close();
+            inString.close();
+            inInts.close();
+            sc.close();
+            socket.close();
+        } 
+        catch (UnknownHostException e)
+        {
+            System.out.println(e);
+        }
+        catch(IOException i )
+        {
+            System.out.println(i);
+        }
+        
+
+
+    }
+
+    
+    
+ }
