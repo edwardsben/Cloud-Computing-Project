@@ -47,10 +47,14 @@ public class Server2
     private static class ClientHandler implements Runnable
     {
         private final Socket clientSocket;
+        int nThreads = Runtime.getRuntime().availableProcessors();
+        //creates a forkjoinpool object and passes it the number of available threads
+        ForkJoinPool forkJoinPool = new ForkJoinPool(nThreads); 
 
-        //this class divides the work up between worker threads and finds the array of prime numbers
+        //this class divides the work up between worker threads recurisvely. The worker threads work in parallel to find the prime numbers and add them to an array
         class calcPrimes extends RecursiveAction{
-            final int seqThreshold = 1000000; // the threshold before the task is split up
+            // the threshold before the task is split up
+            final int seqThreshold = 1000000; 
     
             int[] data;
             int end;
@@ -63,33 +67,77 @@ public class Server2
             }
             @Override
             protected void compute() { 
-                if(end - start <= seqThreshold){ //if total length of array is less than threshold, find prime numbers
+
+                //Debug
+                System.out.println(
+                    " activeThreads=" + forkJoinPool.getActiveThreadCount() +
+                    " runningThreads=" + forkJoinPool.getRunningThreadCount() +
+                    " poolSize=" + forkJoinPool.getPoolSize() +
+                    " queuedTasks=" + forkJoinPool.getQueuedTaskCount() +
+                    " queuedSubmissions=" + forkJoinPool.getQueuedSubmissionCount() +
+                    " parallelism=" + forkJoinPool.getParallelism() +
+                    " stealCount=" + forkJoinPool.getStealCount());
+                //Debug end
+                //if total length of array is less than threshold, find prime numbers
+                if(end - start <= seqThreshold){ 
     
                 int count = 0;
-               
-                for (int i = 2; i <= end; i++) { //if true (prime) add to an array
+                //if true (prime) add to an array
+                for (int i = 2; i <= end; i++) { 
                     if (isPrime(i)){
                         data[count] = i;
                         count++;
                     } 
                 }
- 
-                } else { //else, find mid and start another task to help fill array with primes
+                //else, find mid and start another task to help fill array with primes
+                } else {
                     int mid = (start + end) / 2;
+                    //invokeAll forks the two recursive calls, creating another worker thread. 
                     invokeAll(new calcPrimes(data, start, mid),
                               new calcPrimes(data, mid, end));
                 }
             }
             //finds primes, true means N is prime, false N is not prime
             private boolean isPrime(int N) {
-                if (N < 2) return false; //base case, 0 and 1 are not prime
+                //base case, 0 and 1 are not prime
+                if (N < 2) return false; 
                 for (int i = 2; i <= Math.sqrt(N); i++) {
-                    if (N % i == 0) return false; //if 0 then N has more than 2 factors and not a prime number
+                     //if 0 then N has more than 2 factors and not a prime number
+                    if (N % i == 0) return false;
                 }
                 return true;
             }
         }
-  
+        
+
+
+
+
+        
+        
+        /////////////////////////////////////////////////////
+        public void linearPrimes(int[] linear, int start, int end){
+
+            int count = 0;
+                //if true (prime) add to an array
+                for (int i = 2; i <= end; i++) { 
+                    if (isLinearPrime(i)){
+                        linear[count] = i;
+                        count++;
+                    } 
+                }
+        }
+
+        public boolean isLinearPrime(int N) {
+            if (N < 2) return false; //base case, 0 and 1 are not prime
+            for (int i = 2; i <= Math.sqrt(N); i++) {
+                //if 0 then N has more than 2 factors and not a prime number
+                if (N % i == 0) return false; 
+            }
+            return true;
+        }
+        //////////////////////////////////////////////////////////////////
+
         // default Constructor
         public ClientHandler(Socket socket)
         {
@@ -103,8 +151,10 @@ public class Server2
             BufferedReader in = null;
             String line = null;
             String message;
-            int errorCode = 0; //0 by defaut means client sent a valid number
+            //eerorcode = 0 by defaut means client sent a valid number
+            int errorCode = 0; 
             int clientNumber;
+            System.out.println("Number of threads available for concurrency: " + nThreads);
             
             try 
             {
@@ -119,18 +169,19 @@ public class Server2
                 while(true)
                 {
                     line = in.readLine();
-                    if((line.matches("[0-9]+")) && (Integer.parseInt(line) <= 1000001) && (Integer.parseInt(line) >= 0))
+                    if((line.matches("[0-9]+")) && (Integer.parseInt(line) <= 100000001) && (Integer.parseInt(line) >= 0))
                     {
                         System.out.println("Client sent a valid number");
                         clientNumber = Integer.parseInt(line);
                         
                         errorCode = 0;
-                        outInts.writeInt(errorCode); // to then send error code (in this case there is no error so, errorCode = 0)
+                        // to then send error code (in this case there is no error so, errorCode = 0)
+                        outInts.writeInt(errorCode); 
                         outString.flush();
 
                         line = in.readLine();
-                        System.out.println(line); //should be "client recieved error code"
-
+                         //should be "client recieved error code"
+                        System.out.println(line);
                         
                         message = "Number Recieved and is valid";
                         outString.write(message);
@@ -142,11 +193,13 @@ public class Server2
                     {
                         System.out.println("Client sent a invalid number");
                         errorCode = 1;
-                        outInts.writeInt(errorCode); // to send error code (errorCode = 1)
+                        // to send error code (errorCode = 1)
+                        outInts.writeInt(errorCode);
                         outString.flush();
 
                         line = in.readLine();
-                        System.out.println(line); //should be client recieved error code
+                        //should be client recieved error code
+                        System.out.println(line); 
 
                         message = "You did not enter a valid number, please enter a large number in between 0 and 1,000,000 (without commas)";
                         outString.write(message);
@@ -155,14 +208,26 @@ public class Server2
                     }
                 }          
 
-                int nThreads = Runtime.getRuntime().availableProcessors();
-                System.out.println("Number of threads available for concurrency: " + nThreads);
-
-                ForkJoinPool forkJoinPool = new ForkJoinPool(nThreads); //creates a forkjoinpool object and passes it the number of available threads
-
-                int[] allUpToN = new int[clientNumber]; // creates thread to store prime numbers
-                calcPrimes task = new calcPrimes(allUpToN, 0, allUpToN.length);//creates task object passing array and its length
-                forkJoinPool.invoke(task); //invoke task
+            
+                // creates thread to store prime numbers
+                int[] allUpToN = new int[clientNumber];
+                int[] linearCalc = new int[clientNumber];
+                //creates task object passing array and its length
+                calcPrimes task = new calcPrimes(allUpToN, 0, allUpToN.length);
+                System.out.println("Client: " + clientSocket.getInetAddress().getHostAddress() + "Debug START"); //debug start
+                long startTimeParallelism = System.currentTimeMillis();
+                //starts task and returns the result, in this case only the array allUpToN is filled
+                forkJoinPool.invoke(task); 
+                long endTimeParallelism = System.currentTimeMillis();
+                System.out.println("Client: " + clientSocket.getInetAddress().getHostAddress() + "Debug END"); //debug end
+                System.out.println("Client: " + clientSocket.getInetAddress().getHostAddress() + " parallelism computation took " + ((endTimeParallelism - startTimeParallelism)) + " miliSeconds");
+                
+                
+                long startTimeLinear = System.currentTimeMillis();
+                linearPrimes(linearCalc, 0, linearCalc.length);
+                long endTimeLinear = System.currentTimeMillis();
+                
+                System.out.println("Client: " + clientSocket.getInetAddress().getHostAddress() + " Linear computation took " + ((endTimeLinear - startTimeLinear)) + " miliSeconds");
 
                 System.out.println("Sending array length...");
                 outInts.writeInt(allUpToN.length);//sends client array length
@@ -187,6 +252,8 @@ public class Server2
             {
                 try 
                 {       
+
+                  
                     outString.close();
                     outInts.close();
                     in.close();
